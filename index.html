@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token Hunt — Claude Code Edition</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Silkscreen:wght@400;700&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --black:#0a0a12;--sky1:#0d0b2e;--sky2:#1a1050;--sky3:#3c2080;
+    --sky4:#5c74cc;--horizon:#fc9838;--ground:#2a5c2a;--ground2:#1e4a1e;
+    --gold:#fcbc3c;--gold-dark:#c48a10;--red:#e44030;--blue:#5c94fc;
+    --green:#30c330;--orange:#fc9838;--white:#f0f0f0;--dim:#666;
+    --opus:#e44030;--sonnet:#5c94fc;--haiku:#30c330;--cache:#8a6cfc;
+  }
+  html,body{height:100%;overflow:hidden;background:var(--black);font-family:'VT323',monospace;color:var(--white);user-select:none;-webkit-user-select:none}
+
+  /* ── SCREENS ── */
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:300;transition:opacity .3s}
+  .screen.hidden{opacity:0;pointer-events:none}
+
+  #menu-screen{background:var(--black)}
+  .title-logo{font-family:'Press Start 2P',monospace;font-size:clamp(20px,4vw,42px);color:var(--gold);text-shadow:3px 3px 0 var(--gold-dark),0 0 40px rgba(252,188,60,.3);margin-bottom:8px;text-align:center;line-height:1.5}
+  .title-sub{font-family:'Silkscreen',monospace;font-size:clamp(12px,2vw,20px);color:var(--sky4);margin-bottom:40px;letter-spacing:2px}
+  .menu-modes{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:30px}
+  .mode-card{background:rgba(255,255,255,.04);border:2px solid rgba(255,255,255,.1);border-radius:8px;padding:20px 24px;width:260px;cursor:pointer;transition:all .2s;text-align:center}
+  .mode-card:hover{border-color:var(--gold);background:rgba(252,188,60,.06);transform:translateY(-2px)}
+  .mode-card h3{font-family:'Press Start 2P',monospace;font-size:11px;color:var(--gold);margin-bottom:10px}
+  .mode-card p{font-size:16px;color:var(--dim);line-height:1.5}
+  .menu-hint{font-size:14px;color:var(--dim);margin-top:20px}
+
+  /* ── IMPORT SCREEN ── */
+  #import-screen{background:var(--black)}
+  .import-box{max-width:600px;width:90%;text-align:center}
+  .import-box h2{font-family:'Press Start 2P',monospace;font-size:14px;color:var(--gold);margin-bottom:20px}
+  .drop-zone{border:2px dashed rgba(255,255,255,.2);border-radius:12px;padding:40px 20px;margin-bottom:16px;cursor:pointer;transition:all .2s;position:relative}
+  .drop-zone:hover,.drop-zone.dragover{border-color:var(--gold);background:rgba(252,188,60,.05)}
+  .drop-zone p{font-size:18px;color:var(--dim)}
+  .drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .or-divider{color:var(--dim);font-size:14px;margin:12px 0}
+  textarea.paste-area{width:100%;height:120px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-family:'VT323',monospace;font-size:16px;padding:12px;resize:none}
+  textarea.paste-area::placeholder{color:var(--dim)}
+  .import-actions{display:flex;gap:12px;justify-content:center;margin-top:16px}
+  .import-status{margin-top:16px;font-size:18px;min-height:28px;transition:color .2s}
+  .import-status.ok{color:var(--green)}
+  .import-status.err{color:var(--red)}
+  .import-status.loading{color:var(--gold)}
+
+  /* ── BUTTONS ── */
+  .btn{font-family:'Press Start 2P',monospace;font-size:11px;padding:12px 28px;border:2px solid;border-radius:4px;cursor:pointer;transition:all .15s;background:transparent}
+  .btn:hover{transform:scale(1.03)}
+  .btn:active{transform:scale(.97)}
+  .btn-gold{color:var(--black);background:var(--gold);border-color:var(--gold-dark)}
+  .btn-dim{color:var(--dim);border-color:rgba(255,255,255,.15)}
+  .btn-dim:hover{color:var(--white);border-color:var(--white)}
+
+  /* ── GAME AREA ── */
+  #game-wrap{position:absolute;inset:0;cursor:none;display:none}
+  canvas{display:block;image-rendering:pixelated}
+
+  /* ── CROSSHAIR ── */
+  #xhair{position:fixed;width:44px;height:44px;pointer-events:none;z-index:500;transform:translate(-50%,-50%);filter:drop-shadow(0 0 4px rgba(255,0,0,.4))}
+
+  /* ── FLASH ── */
+  #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:90;transition:opacity .04s}
+
+  /* ── HUD ── */
+  #hud{position:absolute;bottom:0;left:0;right:0;height:90px;background:linear-gradient(180deg,rgba(10,10,18,.95),var(--black));border-top:3px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:100}
+  .hud-col{text-align:center}
+  .hud-lbl{font-size:10px;color:var(--dim);font-family:'Press Start 2P',monospace;letter-spacing:1px;margin-bottom:4px}
+  .hud-val{font-family:'Silkscreen',monospace;font-size:22px;color:var(--gold)}
+  .hud-val.red{color:var(--red)}
+  #ammo-row{display:flex;gap:3px;justify-content:center}
+  .shell{width:6px;height:18px;background:var(--orange);border-radius:3px 3px 1px 1px;transition:opacity .12s}
+  .shell.spent{opacity:.12}
+  #hit-row{display:flex;gap:5px;justify-content:center}
+  .hit-pip{width:14px;height:14px;border-radius:50%;border:2px solid var(--gold);transition:background .2s}
+  .hit-pip.hit{background:var(--gold)}
+  .hit-pip.miss{background:var(--red);border-color:var(--red)}
+
+  /* ── TOKEN BAR ── */
+  #top-bar{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:100;display:flex;gap:20px;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:8px 20px;backdrop-filter:blur(6px)}
+  #top-bar span{font-size:16px}
+  #top-bar .val{font-family:'Silkscreen',monospace;font-size:20px;color:var(--gold)}
+
+  /* ── PROMPT INPUT ── */
+  #prompt-bar{position:absolute;top:10px;left:10px;right:10px;z-index:120;display:none;gap:8px;align-items:center}
+  #prompt-bar input{flex:1;background:rgba(0,0,0,.7);border:2px solid var(--gold);border-radius:6px;padding:10px 14px;font-family:'VT323',monospace;font-size:18px;color:var(--white);outline:none;backdrop-filter:blur(6px)}
+  #prompt-bar input::placeholder{color:var(--dim)}
+  #prompt-bar button{font-family:'Press Start 2P',monospace;font-size:10px;padding:10px 16px;background:var(--gold);color:var(--black);border:2px solid var(--gold-dark);border-radius:6px;cursor:pointer}
+
+  /* ── COMBO ── */
+  #combo-display{position:absolute;top:60px;right:20px;z-index:100;font-family:'Press Start 2P',monospace;font-size:14px;color:var(--orange);opacity:0;transition:all .25s;text-shadow:2px 2px 0 rgba(0,0,0,.6)}
+
+  /* ── FLOATING SCORES ── */
+  .float-txt{position:absolute;font-family:'Press Start 2P',monospace;pointer-events:none;z-index:95;animation:floatAway .9s ease-out forwards;text-shadow:2px 2px 0 rgba(0,0,0,.5)}
+  .float-txt.pts{font-size:14px;color:var(--gold)}
+  .float-txt.miss{font-size:10px;color:var(--red)}
+  .float-txt.info{font-size:9px;color:var(--sky4)}
+  @keyframes floatAway{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-70px) scale(1.2)}}
+
+  /* ── DOG / MESSAGE AREA ── */
+  #msg-area{position:absolute;bottom:94px;left:50%;transform:translateX(-50%);z-index:80;text-align:center}
+  .dog-msg{font-family:'VT323',monospace;font-size:22px;color:var(--white);background:rgba(0,0,0,.8);padding:6px 18px;border:2px solid rgba(255,255,255,.2);border-radius:6px;white-space:nowrap;animation:fadeMsg 2s ease-out forwards}
+  @keyframes fadeMsg{0%,60%{opacity:1}100%{opacity:0}}
+
+  /* ── ROUND OVERLAY ── */
+  #round-overlay{position:absolute;inset:0;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.88);backdrop-filter:blur(4px)}
+  #round-overlay h1{font-family:'Press Start 2P',monospace;font-size:clamp(16px,3vw,28px);color:var(--gold);text-shadow:3px 3px 0 var(--gold-dark);margin-bottom:12px;text-align:center;line-height:1.6}
+  #round-overlay h2{font-family:'Silkscreen',monospace;font-size:clamp(12px,2vw,18px);color:var(--white);margin-bottom:24px;text-align:center;line-height:1.8}
+  .stat-row{font-size:18px;color:var(--dim);margin:4px 0;text-align:center}
+  .stat-row .hl{color:var(--gold)}
+  .stat-row .hl-red{color:var(--red)}
+  #round-overlay .btn{margin-top:20px}
+
+  /* ── RESPONSIVE ── */
+  @media(max-width:600px){
+    .menu-modes{flex-direction:column;align-items:center}
+    .mode-card{width:90%}
+    #hud{padding:0 10px;height:80px}
+    .hud-val{font-size:16px}
+  }
+</style>
+</head>
+<body>
+
+<!-- CROSSHAIR -->
+<svg id="xhair" viewBox="0 0 44 44" fill="none" style="display:none">
+  <circle cx="22" cy="22" r="14" stroke="#ff2020" stroke-width="2.5" opacity=".9"/>
+  <line x1="22" y1="2" x2="22" y2="14" stroke="#ff2020" stroke-width="2"/>
+  <line x1="22" y1="30" x2="22" y2="42" stroke="#ff2020" stroke-width="2"/>
+  <line x1="2" y1="22" x2="14" y2="22" stroke="#ff2020" stroke-width="2"/>
+  <line x1="30" y1="22" x2="42" y2="22" stroke="#ff2020" stroke-width="2"/>
+  <circle cx="22" cy="22" r="2.5" fill="#ff2020"/>
+</svg>
+
+<!-- ═══════ MENU SCREEN ═══════ -->
+<div class="screen" id="menu-screen">
+  <div class="title-logo">🪙 TOKEN HUNT 🪙</div>
+  <div class="title-sub">CLAUDE CODE EDITION</div>
+  <div class="menu-modes">
+    <div class="mode-card" onclick="showImport()">
+      <h3>📂 IMPORT JSONL</h3>
+      <p>Drop a Claude Code session file and shoot your real token usage</p>
+    </div>
+    <div class="mode-card" onclick="startLiveMode()">
+      <h3>⌨️ LIVE PROMPT</h3>
+      <p>Type prompts, watch estimated tokens fly as discs, and blast them</p>
+    </div>
+    <div class="mode-card" onclick="startArcadeMode()">
+      <h3>🕹️ ARCADE</h3>
+      <p>Classic Duck Hunt — random tokens fly and you shoot for score</p>
+    </div>
+  </div>
+  <div class="menu-hint">Built for the 52-week build challenge 🚀</div>
+</div>
+
+<!-- ═══════ IMPORT SCREEN ═══════ -->
+<div class="screen hidden" id="import-screen">
+  <div class="import-box">
+    <h2>IMPORT SESSION DATA</h2>
+    <div class="drop-zone" id="drop-zone">
+      <p>📁 Drop a .jsonl session file here</p>
+      <p style="font-size:13px;margin-top:6px;color:var(--dim)">~/.claude/projects/&lt;project&gt;/&lt;session&gt;.jsonl</p>
+      <input type="file" id="file-input" accept=".jsonl,.json,.txt">
+    </div>
+    <div class="or-divider">— or paste ccusage / raw JSONL output —</div>
+    <textarea class="paste-area" id="paste-area" placeholder='Paste JSONL lines or ccusage JSON output here...'></textarea>
+    <div class="import-actions">
+      <button class="btn btn-dim" onclick="showMenu()">BACK</button>
+      <button class="btn btn-gold" id="btn-load" onclick="parseImport()">LOAD & PLAY</button>
+    </div>
+    <div class="import-status" id="import-status"></div>
+  </div>
+</div>
+
+<!-- ═══════ GAME AREA ═══════ -->
+<div id="game-wrap">
+  <canvas id="cv"></canvas>
+  <div id="flash"></div>
+
+  <div id="top-bar">
+    <span>TOKENS BURNED: <span class="val" id="tv-burned">0</span></span>
+    <span>EST COST: <span class="val" id="tv-cost">$0.000</span></span>
+  </div>
+
+  <div id="prompt-bar">
+    <input type="text" id="prompt-input" placeholder="Type a prompt and press Enter to launch tokens...">
+    <button onclick="fireLivePrompt()">SEND</button>
+  </div>
+
+  <div id="combo-display">COMBO x1</div>
+  <div id="msg-area"></div>
+
+  <div id="hud">
+    <div class="hud-col">
+      <div class="hud-lbl">ROUND</div>
+      <div class="hud-val" id="hv-round">1</div>
+    </div>
+    <div class="hud-col">
+      <div class="hud-lbl">HITS</div>
+      <div id="hit-row"></div>
+    </div>
+    <div class="hud-col">
+      <div class="hud-lbl">AMMO</div>
+      <div id="ammo-row"></div>
+    </div>
+    <div class="hud-col">
+      <div class="hud-lbl">SCORE</div>
+      <div class="hud-val" id="hv-score">0</div>
+    </div>
+    <div class="hud-col">
+      <div class="hud-lbl">$ SPENT</div>
+      <div class="hud-val red" id="hv-cost">$0.00</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ ROUND OVERLAY ═══════ -->
+<div id="round-overlay"></div>
+
+<script>
+// ══════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════
+const SHOTS_PER_ROUND = 10;
+const MODEL_PROFILES = {
+  'opus':   { label:'OPUS',   color:'#e44030', costIn:15, costOut:75, speed:.55, size:38, pts:500 },
+  'sonnet': { label:'SONNET', color:'#5c94fc', costIn:3,  costOut:15, speed:.75, size:32, pts:200 },
+  'haiku':  { label:'HAIKU',  color:'#30c330', costIn:.25,costOut:1.25,speed:1.1,size:24, pts:80  },
+  'cache':  { label:'CACHE',  color:'#8a6cfc', costIn:.3, costOut:0,  speed:1.3, size:22, pts:40  },
+};
+// cost per million tokens
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let cv, cx, W, H;
+let mode = null; // 'arcade','live','import'
+let gameActive = false;
+let round = 1, score = 0, totalBurned = 0, totalCost = 0;
+let shotsLeft = SHOTS_PER_ROUND, combo = 0, maxCombo = 0;
+let discs = [], particles = [], stars = [], trees = [], clouds = [];
+let roundHits = 0, roundTotal = 0, hitResults = [];
+let launchQueue = []; // for import & live modes
+let arcadeTimer = 0, arcadeLaunched = 0, ARCADE_PER_ROUND = 8;
+let mouseX = 0, mouseY = 0;
+let audioCtx = null;
+
+// ══════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════
+function showMenu(){ 
+  hideAllScreens(); show('menu-screen'); 
+  document.getElementById('game-wrap').style.display='none';
+  document.getElementById('xhair').style.display='none';
+  document.body.style.cursor='default';
+}
+function showImport(){ hideAllScreens(); show('import-screen'); }
+function hideAllScreens(){ document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden')); }
+function show(id){ document.getElementById(id).classList.remove('hidden'); }
+
+// ══════════════════════════════════════════════
+// CANVAS + BACKGROUND
+// ══════════════════════════════════════════════
+function initCanvas(){
+  cv=document.getElementById('cv'); cx=cv.getContext('2d');
+  resize(); window.addEventListener('resize',resize);
+}
+function resize(){
+  W=cv.width=window.innerWidth; H=cv.height=window.innerHeight;
+  genBg();
+}
+function genBg(){
+  stars=[];for(let i=0;i<80;i++) stars.push({x:Math.random()*W,y:Math.random()*H*.28,s:Math.random()*2+.5,t:Math.random()*6.28});
+  trees=[];const n=Math.floor(W/100);for(let i=0;i<n;i++) trees.push({x:(i/n)*W+Math.random()*60-30,h:55+Math.random()*55,w:28+Math.random()*22,sh:Math.random()*30});
+  clouds=[];for(let i=0;i<5;i++) clouds.push({x:Math.random()*W,y:30+Math.random()*90,w:70+Math.random()*70,sp:.1+Math.random()*.25});
+}
+
+function drawBg(t){
+  const gY=H-150;
+  // sky
+  const g=cx.createLinearGradient(0,0,0,gY);
+  g.addColorStop(0,'#0d0b2e');g.addColorStop(.35,'#1a1050');g.addColorStop(.65,'#3c2080');g.addColorStop(.88,'#5c74cc');g.addColorStop(1,'#fc9838');
+  cx.fillStyle=g;cx.fillRect(0,0,W,gY);
+  // stars
+  for(const s of stars){const a=.35+Math.sin(t*.002+s.t)*.4;cx.fillStyle=`rgba(255,255,255,${a})`;cx.fillRect(s.x|0,s.y|0,Math.ceil(s.s),Math.ceil(s.s))}
+  // clouds
+  for(const c of clouds){c.x+=c.sp;if(c.x>W+c.w)c.x=-c.w;cx.fillStyle='rgba(255,255,255,.08)';cx.beginPath();cx.ellipse(c.x,c.y,c.w/2,14,0,0,Math.PI*2);cx.fill();cx.beginPath();cx.ellipse(c.x-c.w*.22,c.y+6,c.w*.28,10,0,0,Math.PI*2);cx.fill()}
+  // tree line
+  for(const tr of trees){cx.fillStyle=`rgb(${18+tr.sh},${55+tr.sh},${18+tr.sh})`;cx.fillRect(tr.x-3,gY-tr.h*.3,6,tr.h*.3);for(let r=0;r<tr.h*.72;r+=4){const rw=(r/(tr.h*.72))*tr.w;cx.fillRect(tr.x-rw/2,gY-tr.h+r,rw,4)}}
+  // ground
+  cx.fillStyle='#2a5c2a';cx.fillRect(0,gY,W,H-gY);
+  cx.fillStyle='#1e4a1e';cx.fillRect(0,gY,W,4);
+  cx.fillStyle='#3a7a3a';
+  for(let x=0;x<W;x+=7){if(Math.sin(x*.6)>.25)cx.fillRect(x,gY-3,3,7)}
+}
+
+// ══════════════════════════════════════════════
+// DISC (TOKEN)
+// ══════════════════════════════════════════════
+class Disc{
+  constructor(profile, tokenCount, promptSnippet){
+    this.prof=profile;
+    this.tokens=tokenCount;
+    this.snippet=promptSnippet||'';
+    this.x=W*.15+Math.random()*W*.7;
+    this.y=H-150;
+    this.vx=(Math.random()-.5)*3.5;
+    this.vy=-(7.5+Math.random()*5)*profile.speed;
+    this.size=profile.size;
+    this.rot=0;this.rotV=(Math.random()-.5)*.14;
+    this.phase=Math.random()*6.28;
+    this.alive=true;this.escaped=false;
+    this.gravity=.11;
+    this.costVal=(tokenCount/1e6)*(profile.costIn+profile.costOut)/2;
+  }
+  update(){
+    this.vy+=this.gravity;
+    this.x+=this.vx+Math.sin(this.phase)*.4;
+    this.y+=this.vy;
+    this.rot+=this.rotV;
+    this.phase+=.04;
+    if(this.y>H-130&&this.vy>0){this.alive=false;this.escaped=true}
+    if(this.x<-60||this.x>W+60){this.alive=false;this.escaped=true}
+  }
+  draw(t){
+    cx.save();cx.translate(this.x,this.y);cx.rotate(this.rot);
+    const s=this.size, spin=Math.cos(t*.004+this.phase), sw=s*Math.abs(spin);
+    // shadow
+    cx.fillStyle='rgba(0,0,0,.25)';cx.beginPath();cx.ellipse(3,3,sw,s,0,0,Math.PI*2);cx.fill();
+    // body gradient
+    const cg=cx.createRadialGradient(-sw*.3,-s*.3,0,0,0,s);
+    cg.addColorStop(0,lighten(this.prof.color,50));cg.addColorStop(.7,this.prof.color);cg.addColorStop(1,darken(this.prof.color,50));
+    cx.fillStyle=cg;cx.beginPath();cx.ellipse(0,0,sw,s,0,0,Math.PI*2);cx.fill();
+    // rim
+    cx.strokeStyle=darken(this.prof.color,70);cx.lineWidth=2;cx.beginPath();cx.ellipse(0,0,sw,s,0,0,Math.PI*2);cx.stroke();
+    // inner
+    if(Math.abs(spin)>.25){
+      cx.strokeStyle=lighten(this.prof.color,30);cx.lineWidth=1.5;cx.beginPath();cx.ellipse(0,0,sw*.68,s*.68,0,0,Math.PI*2);cx.stroke();
+      // label
+      cx.fillStyle='rgba(0,0,0,.55)';cx.font=`bold ${Math.max(7,s*.32)}px "Press Start 2P"`;cx.textAlign='center';cx.textBaseline='middle';
+      const lbl=spin>0?this.prof.label:formatK(this.tokens);
+      cx.fillText(lbl,0,0);
+    }
+    // shine
+    cx.fillStyle=`rgba(255,255,255,${.12+Math.sin(t*.005)*.08})`;cx.beginPath();cx.ellipse(-sw*.25,-s*.28,sw*.18,s*.13,-.3,0,0);cx.fill();
+    cx.restore();
+    // token count above
+    cx.fillStyle='rgba(255,255,255,.6)';cx.font='11px "Press Start 2P"';cx.textAlign='center';
+    cx.fillText(formatK(this.tokens)+'tk',this.x,this.y-s-10);
+    // snippet below
+    if(this.snippet){
+      cx.fillStyle='rgba(255,255,255,.35)';cx.font='14px VT323';
+      cx.fillText(this.snippet.slice(0,30)+(this.snippet.length>30?'…':''),this.x,this.y+s+16);
+    }
+  }
+  hitTest(mx,my){const dx=mx-this.x,dy=my-this.y;return Math.sqrt(dx*dx+dy*dy)<this.size+12}
+}
+
+// ══════════════════════════════════════════════
+// PARTICLES
+// ══════════════════════════════════════════════
+class Ptcl{
+  constructor(x,y,col){this.x=x;this.y=y;this.vx=(Math.random()-.5)*9;this.vy=(Math.random()-.5)*9-3;this.life=1;this.decay=.018+Math.random()*.02;this.s=2+Math.random()*4;this.col=col;this.g=.14}
+  update(){this.x+=this.vx;this.y+=this.vy;this.vy+=this.g;this.life-=this.decay}
+  draw(){cx.globalAlpha=Math.max(0,this.life);cx.fillStyle=this.col;cx.fillRect(this.x|0,this.y|0,Math.ceil(this.s),Math.ceil(this.s));cx.globalAlpha=1}
+}
+
+// ══════════════════════════════════════════════
+// AUDIO
+// ══════════════════════════════════════════════
+function ensureAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)()}
+function sfx(freq,to,dur,type='square',vol=.12){
+  ensureAudio();const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.type=type;o.frequency.setValueAtTime(freq,audioCtx.currentTime);o.frequency.exponentialRampToValueAtTime(to,audioCtx.currentTime+dur);
+  g.gain.setValueAtTime(vol,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+dur+.02);
+  o.connect(g).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur+.03);
+}
+function sfxShot(){sfx(220,40,.12)}
+function sfxHit(){sfx(600,1400,.1);setTimeout(()=>sfx(900,1600,.06,'square',.08),60)}
+function sfxLaunch(){sfx(150,400,.15,'triangle',.06)}
+function sfxRoundEnd(){[440,550,660,880].forEach((f,i)=>setTimeout(()=>sfx(f,f*1.2,.18,'square',.07),i*110))}
+
+// ══════════════════════════════════════════════
+// SHOOTING
+// ══════════════════════════════════════════════
+function shoot(mx,my){
+  if(!gameActive||shotsLeft<=0)return;
+  shotsLeft--;updateAmmo();flashEl();sfxShot();
+  let hit=false;
+  for(let i=discs.length-1;i>=0;i--){
+    const d=discs[i];
+    if(d.alive&&d.hitTest(mx,my)){
+      hit=true;d.alive=false;roundHits++;combo++;if(combo>maxCombo)maxCombo=combo;
+      const mult=Math.min(combo,5);const pts=d.prof.pts*mult;
+      score+=pts;totalBurned+=d.tokens;totalCost+=d.costVal;
+      for(let p=0;p<22;p++)particles.push(new Ptcl(d.x,d.y,d.prof.color));
+      for(let p=0;p<8;p++)particles.push(new Ptcl(d.x,d.y,'#fcbc3c'));
+      floatTxt(d.x,d.y-20,`+${pts}`,'pts');
+      if(d.tokens>0)floatTxt(d.x,d.y+10,`${formatK(d.tokens)}tk burned`,'info');
+      if(combo>1)showCombo(combo);
+      sfxHit();hitResults.push('hit');updatePips();
+      break;
+    }
+  }
+  if(!hit){combo=0;hideCombo();floatTxt(mx,my,'MISS','miss')}
+  updateHUD();
+  checkRoundEnd();
+}
+
+// ══════════════════════════════════════════════
+// UI HELPERS
+// ══════════════════════════════════════════════
+function flashEl(){const f=document.getElementById('flash');f.style.opacity='.25';setTimeout(()=>f.style.opacity='0',45)}
+function floatTxt(x,y,text,cls){const e=document.createElement('div');e.className='float-txt '+cls;e.textContent=text;e.style.left=x+'px';e.style.top=y+'px';document.getElementById('game-wrap').appendChild(e);setTimeout(()=>e.remove(),900)}
+function showCombo(n){const e=document.getElementById('combo-display');e.textContent=`COMBO x${n}`;e.style.opacity='1';e.style.fontSize=`${14+n*2}px`}
+function hideCombo(){document.getElementById('combo-display').style.opacity='0'}
+function dogMsg(msg){const a=document.getElementById('msg-area');a.innerHTML=`<div class="dog-msg">${msg}</div>`;setTimeout(()=>a.innerHTML='',2200)}
+
+function updateHUD(){
+  document.getElementById('hv-score').textContent=score.toLocaleString();
+  document.getElementById('hv-cost').textContent='$'+totalCost.toFixed(3);
+  document.getElementById('tv-burned').textContent=totalBurned.toLocaleString();
+  document.getElementById('tv-cost').textContent='$'+totalCost.toFixed(3);
+}
+function updateAmmo(){
+  const r=document.getElementById('ammo-row');r.innerHTML='';
+  for(let i=0;i<SHOTS_PER_ROUND;i++){const s=document.createElement('div');s.className='shell'+(i>=shotsLeft?' spent':'');r.appendChild(s)}
+}
+function updatePips(){
+  const r=document.getElementById('hit-row');r.innerHTML='';
+  for(let i=0;i<roundTotal;i++){const p=document.createElement('div');p.className='hit-pip';if(hitResults[i]==='hit')p.classList.add('hit');else if(hitResults[i]==='miss')p.classList.add('miss');r.appendChild(p)}
+}
+
+function formatK(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n.toString()}
+function lighten(hex,a){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`rgb(${Math.min(255,r+a)},${Math.min(255,g+a)},${Math.min(255,b+a)})`}
+function darken(hex,a){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`rgb(${Math.max(0,r-a)},${Math.max(0,g-a)},${Math.max(0,b-a)})`}
+
+// ══════════════════════════════════════════════
+// ROUND MANAGEMENT
+// ══════════════════════════════════════════════
+function beginGame(){
+  hideAllScreens();
+  document.getElementById('game-wrap').style.display='block';
+  document.getElementById('xhair').style.display='block';
+  document.body.style.cursor='none';
+  round=1;score=0;totalBurned=0;totalCost=0;
+  startRound();
+}
+
+function startRound(){
+  gameActive=true;discs=[];particles=[];
+  roundHits=0;combo=0;maxCombo=0;hitResults=[];
+  shotsLeft=SHOTS_PER_ROUND;
+  arcadeLaunched=0;arcadeTimer=performance.now()+600;
+
+  if(mode==='import'){
+    // pull next batch from queue
+    const batch=launchQueue.splice(0,Math.min(8,launchQueue.length));
+    roundTotal=batch.length||1;
+    batch.forEach((item,i)=>setTimeout(()=>launchDisc(item.profile,item.tokens,item.snippet),i*700));
+    if(batch.length===0){roundTotal=1;setTimeout(()=>launchDisc(MODEL_PROFILES.sonnet,500,'(no more data)'),500)}
+  } else if(mode==='live'){
+    roundTotal=0; // dynamic — grows as user types
+  } else {
+    roundTotal=ARCADE_PER_ROUND;
+  }
+
+  document.getElementById('hv-round').textContent=round;
+  document.getElementById('round-overlay').style.display='none';
+  updateAmmo();updatePips();updateHUD();hideCombo();
+
+  if(mode==='live'){
+    document.getElementById('prompt-bar').style.display='flex';
+    document.getElementById('top-bar').style.display='none';
+    document.getElementById('prompt-input').focus();
+  } else {
+    document.getElementById('prompt-bar').style.display='none';
+    document.getElementById('top-bar').style.display='flex';
+  }
+}
+
+function launchDisc(profile,tokens,snippet){
+  const d=new Disc(profile,tokens,snippet);
+  discs.push(d);sfxLaunch();
+}
+
+function checkRoundEnd(){
+  if(mode==='live')return; // live mode doesn't end rounds automatically
+  const allDead=discs.every(d=>!d.alive);
+  const noAmmo=shotsLeft<=0;
+  if(allDead&&arcadeLaunched>=roundTotal){
+    // fill remaining as miss
+    while(hitResults.length<roundTotal)hitResults.push('miss');
+    updatePips();
+    setTimeout(()=>{if(gameActive)endRound()},400);
+  } else if(noAmmo&&allDead){
+    while(hitResults.length<roundTotal)hitResults.push('miss');
+    updatePips();
+    setTimeout(()=>{if(gameActive)endRound()},400);
+  }
+}
+
+function endRound(){
+  gameActive=false;sfxRoundEnd();
+  const acc=roundTotal>0?Math.round((roundHits/roundTotal)*100):0;
+  const passed=roundHits>=Math.ceil(roundTotal*.4);
+  const perfectMsg=roundHits===roundTotal;
+
+  if(!passed&&mode==='arcade')dogMsg("Ha ha! Tokens escaped! 🐕");
+
+  const ov=document.getElementById('round-overlay');
+  ov.style.display='flex';
+  ov.innerHTML=`
+    <h1>${perfectMsg?'🎯 PERFECT ROUND!':passed?'ROUND '+round+' COMPLETE':'TOKENS ESCAPED...'}</h1>
+    <h2>${roundHits}/${roundTotal} tokens destroyed</h2>
+    <div class="stat-row">Accuracy: <span class="hl">${acc}%</span></div>
+    <div class="stat-row">Max Combo: <span class="hl">x${maxCombo}</span></div>
+    <div class="stat-row">Tokens Burned: <span class="hl">${totalBurned.toLocaleString()}</span></div>
+    <div class="stat-row">Est API Cost: <span class="hl-red">$${totalCost.toFixed(3)}</span></div>
+    ${(mode==='import'&&launchQueue.length===0)?'<div class="stat-row" style="margin-top:12px;color:var(--gold)">Session complete! All data loaded.</div>':''}
+    <button class="btn btn-gold" onclick="${passed||(mode==='import'&&launchQueue.length>0)?'nextRound()':'restartRounds()'}">
+      ${(mode==='import'&&launchQueue.length===0)?'BACK TO MENU':(passed?'ROUND '+(round+1):'TRY AGAIN')}
+    </button>
+    <button class="btn btn-dim" onclick="showMenu()" style="margin-top:8px">MENU</button>
+  `;
+  if(mode==='import'&&launchQueue.length===0){
+    ov.querySelector('.btn-gold').onclick=showMenu;
+  }
+}
+
+function nextRound(){round++;startRound()}
+function restartRounds(){round=1;score=0;totalBurned=0;totalCost=0;startRound()}
+
+// ══════════════════════════════════════════════
+// MODE: ARCADE
+// ══════════════════════════════════════════════
+function startArcadeMode(){
+  mode='arcade';beginGame();
+}
+
+function arcadeTick(t){
+  if(mode!=='arcade'||!gameActive)return;
+  if(arcadeLaunched<ARCADE_PER_ROUND&&t>arcadeTimer){
+    // pick random model
+    const keys=Object.keys(MODEL_PROFILES);
+    const weights=[15,45,30,10]; // opus rare, sonnet common, haiku common, cache
+    let r=Math.random()*100,idx=0;
+    for(let i=0;i<weights.length;i++){r-=weights[i];if(r<=0){idx=i;break}}
+    if(round>=3&&Math.random()<.25)idx=0; // more opus later
+    const prof=MODEL_PROFILES[keys[idx]];
+    const tokens=Math.round((500+Math.random()*20000)*(idx===0?3:idx===3?.3:1));
+    launchDisc(prof,tokens,'');
+    arcadeLaunched++;
+    arcadeTimer=t+Math.max(500,1400-round*60);
+    // double launch sometimes
+    if(round>=2&&Math.random()<.2&&arcadeLaunched<ARCADE_PER_ROUND){
+      setTimeout(()=>{
+        const p2=MODEL_PROFILES[keys[Math.floor(Math.random()*keys.length)]];
+        launchDisc(p2,Math.round(300+Math.random()*8000),'');
+        arcadeLaunched++;
+      },180);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+// MODE: LIVE PROMPT
+// ══════════════════════════════════════════════
+function startLiveMode(){
+  mode='live';beginGame();
+}
+
+function fireLivePrompt(){
+  const inp=document.getElementById('prompt-input');
+  const text=inp.value.trim();
+  if(!text)return;
+  inp.value='';
+
+  // Estimate tokens: ~1 token per 4 chars for input, model "thinks" ~2-5x for output
+  const inputTokens=Math.max(10,Math.ceil(text.length/3.8));
+  const outputTokens=Math.round(inputTokens*(2+Math.random()*4));
+  const totalTokens=inputTokens+outputTokens;
+
+  // Pick model based on prompt complexity
+  let prof;
+  if(text.length>200||/refactor|architect|design|complex|analyze|review entire/i.test(text)){
+    prof=MODEL_PROFILES.opus;
+  } else if(text.length>80||/explain|write|build|create|implement|debug/i.test(text)){
+    prof=MODEL_PROFILES.sonnet;
+  } else if(text.length<30){
+    prof=MODEL_PROFILES.haiku;
+  } else {
+    prof=MODEL_PROFILES.sonnet;
+  }
+
+  roundTotal++;
+  updatePips();
+
+  // Launch 1-3 discs depending on token volume
+  const numDiscs=totalTokens>5000?3:totalTokens>1500?2:1;
+  const perDisc=Math.round(totalTokens/numDiscs);
+  for(let i=0;i<numDiscs;i++){
+    setTimeout(()=>{
+      launchDisc(prof,perDisc,i===0?text:'');
+    },i*250);
+  }
+
+  // Extra ammo for live mode
+  shotsLeft=Math.min(shotsLeft+numDiscs+1,SHOTS_PER_ROUND);
+  updateAmmo();
+
+  dogMsg(`~${totalTokens.toLocaleString()} tokens estimated`);
+}
+
+document.getElementById('prompt-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();fireLivePrompt()}
+});
+
+// ══════════════════════════════════════════════
+// MODE: IMPORT
+// ══════════════════════════════════════════════
+function importStatus(msg, type){
+  const el=document.getElementById('import-status');
+  el.textContent=msg;
+  el.className='import-status '+(type||'');
+}
+
+function parseImport(){
+  const fileInput=document.getElementById('file-input');
+  const pasteText=document.getElementById('paste-area').value.trim();
+
+  if(fileInput.files.length>0){
+    const file=fileInput.files[0];
+    importStatus(`Reading ${file.name} (${(file.size/1024).toFixed(1)} KB)...`,'loading');
+    const reader=new FileReader();
+    reader.onload=e=>processJsonl(e.target.result);
+    reader.onerror=()=>importStatus('Failed to read file','err');
+    reader.readAsText(file);
+  } else if(pasteText){
+    importStatus('Parsing pasted data...','loading');
+    // Small delay so the status message renders before parsing blocks
+    setTimeout(()=>processJsonl(pasteText),50);
+  } else {
+    importStatus('Drop a file or paste data first!','err');
+  }
+}
+
+function detectModel(modelStr){
+  const m=(modelStr||'').toLowerCase();
+  if(m.includes('opus'))   return MODEL_PROFILES.opus;
+  if(m.includes('sonnet')) return MODEL_PROFILES.sonnet;
+  if(m.includes('haiku'))  return MODEL_PROFILES.haiku;
+  return MODEL_PROFILES.sonnet; // default
+}
+
+function processJsonl(raw){
+  const lines=raw.split('\n').filter(l=>l.trim());
+  launchQueue=[];
+
+  // Track the last user message so we can label assistant discs with the user's prompt
+  let lastUserSnippet='';
+  let parsedLines=0, assistantMsgs=0, userMsgs=0;
+
+  for(const line of lines){
+    try{
+      const obj=JSON.parse(line);
+      parsedLines++;
+
+      // ── User / human messages: capture prompt text for labelling ──
+      if(obj.type==='user'||obj.type==='human'){
+        userMsgs++;
+        const c=obj.message?.content;
+        if(typeof c==='string'){
+          lastUserSnippet=c.slice(0,50);
+        } else if(Array.isArray(c)){
+          const tb=c.find(b=>b.type==='text'||b.type==='tool_result');
+          if(tb){
+            const txt=tb.text||tb.content||'';
+            if(typeof txt==='string') lastUserSnippet=txt.slice(0,50);
+            // tool_result content can be an array
+            else if(Array.isArray(txt)){
+              const inner=txt.find(x=>typeof x==='string'||x.type==='text');
+              lastUserSnippet=(typeof inner==='string'?inner:inner?.text||'').slice(0,50);
+            }
+          }
+        }
+        continue;
+      }
+
+      // ── Assistant messages: extract token usage ──
+      if(obj.type==='assistant'){
+        const u=obj.message?.usage;
+        if(!u) continue;
+        assistantMsgs++;
+
+        const input=u.input_tokens||0;
+        const output=u.output_tokens||0;
+        const cacheRead=u.cache_read_input_tokens||0;
+        const cacheCreate=u.cache_creation_input_tokens||0;
+
+        // Total billable footprint: all token categories
+        const totalAll=input+output+cacheCreate+cacheRead;
+        // Direct (non-cache) tokens for the main disc
+        const directTokens=input+output;
+
+        const prof=detectModel(obj.message?.model);
+
+        // Use the previous user prompt as snippet (more useful than assistant response)
+        const snippet=lastUserSnippet||'';
+
+        // Main disc: always launch if there are any tokens at all
+        if(totalAll>0){
+          // Use the larger of direct or a meaningful representation
+          const discTokens=Math.max(directTokens, totalAll);
+          launchQueue.push({profile:prof, tokens:discTokens, snippet});
+        }
+
+        // Extra cache disc if cache usage is significant
+        if(cacheRead>5000){
+          launchQueue.push({profile:MODEL_PROFILES.cache, tokens:cacheRead, snippet:'cache read'});
+        }
+        if(cacheCreate>5000){
+          launchQueue.push({profile:MODEL_PROFILES.cache, tokens:cacheCreate, snippet:'cache write'});
+        }
+
+        continue;
+      }
+
+      // ── Skip progress, queue-operation, etc. ──
+
+    } catch(e){/* skip non-json lines */}
+  }
+
+  // ── Fallback: try ccusage summary JSON array ──
+  if(launchQueue.length===0){
+    try{
+      const data=JSON.parse(raw);
+      const arr=Array.isArray(data)?data:(data?.sessions||data?.data||[]);
+      if(Array.isArray(arr)&&arr.length>0){
+        arr.forEach(row=>{
+          const tokens=row.totalTokens||row.total_tokens||row.tokens||row.input_tokens||1000;
+          const prof=detectModel(row.model);
+          launchQueue.push({profile:prof, tokens, snippet:row.session||row.title||row.date||''});
+        });
+      }
+    }catch(e){}
+  }
+
+  // ── Fallback: try single JSON object with usage ──
+  if(launchQueue.length===0){
+    try{
+      const obj=JSON.parse(raw);
+      if(obj.usage||obj.input_tokens||obj.tokens){
+        const u=obj.usage||obj;
+        const tokens=(u.input_tokens||0)+(u.output_tokens||0)+(u.cache_read_input_tokens||0)+(u.cache_creation_input_tokens||0)||u.tokens||1000;
+        launchQueue.push({profile:detectModel(obj.model), tokens, snippet:obj.title||''});
+      }
+    }catch(e){}
+  }
+
+  if(launchQueue.length===0){
+    const detail=parsedLines===0
+      ?'No valid JSON lines found. Make sure you paste raw JSONL content.'
+      :`Parsed ${parsedLines} JSON lines (${userMsgs} user, ${assistantMsgs} assistant) but found 0 token entries.`;
+    importStatus('⚠ '+detail,'err');
+    return;
+  }
+
+  importStatus(`✓ Loaded ${launchQueue.length} token exchanges from ${assistantMsgs} messages — launching!`,'ok');
+  mode='import';
+  setTimeout(()=>beginGame(),600);
+}
+
+// Drag & drop + file input
+const dz=document.getElementById('drop-zone');
+const fileInput=document.getElementById('file-input');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('dragover');
+  if(e.dataTransfer.files.length){
+    fileInput.files=e.dataTransfer.files;
+    importStatus(`File ready: ${e.dataTransfer.files[0].name}`,'ok');
+  }
+});
+fileInput.addEventListener('change',()=>{
+  if(fileInput.files.length>0){
+    importStatus(`File ready: ${fileInput.files[0].name}`,'ok');
+  }
+});
+
+// ══════════════════════════════════════════════
+// MAIN LOOP
+// ══════════════════════════════════════════════
+function loop(t){
+  cx.clearRect(0,0,W,H);
+  drawBg(t);
+
+  if(gameActive){
+    arcadeTick(t);
+    // Update discs
+    for(const d of discs){
+      if(d.alive)d.update();
+      if(!d.alive&&d.escaped){
+        d.escaped=false;
+        if(mode!=='live'){hitResults.push('miss');updatePips();checkRoundEnd()}
+      }
+    }
+  }
+
+  // Draw discs
+  for(const d of discs){if(d.alive)d.draw(t)}
+
+  // Particles
+  particles=particles.filter(p=>p.life>0);
+  for(const p of particles){p.update();p.draw()}
+
+  requestAnimationFrame(loop);
+}
+
+// ══════════════════════════════════════════════
+// INPUT
+// ══════════════════════════════════════════════
+document.addEventListener('mousemove',e=>{
+  mouseX=e.clientX;mouseY=e.clientY;
+  const xh=document.getElementById('xhair');
+  xh.style.left=e.clientX+'px';xh.style.top=e.clientY+'px';
+});
+document.addEventListener('click',e=>{
+  // Don't shoot if clicking UI elements
+  if(e.target.closest('#prompt-bar')||e.target.closest('.btn')||e.target.closest('.mode-card')||e.target.closest('.screen:not(.hidden)')||e.target.closest('#round-overlay'))return;
+  if(gameActive)shoot(e.clientX,e.clientY);
+});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+initCanvas();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
