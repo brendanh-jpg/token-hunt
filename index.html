@@ -43,6 +43,19 @@
   textarea.paste-area{width:100%;height:120px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-family:'VT323',monospace;font-size:16px;padding:12px;resize:none}
   textarea.paste-area::placeholder{color:var(--dim)}
   .import-actions{display:flex;gap:12px;justify-content:center;margin-top:16px}
+  #spectator-badge{position:absolute;top:10px;left:10px;z-index:150;font-family:'Press Start 2P',monospace;font-size:9px;color:var(--gold);background:rgba(0,0,0,.7);padding:6px 12px;border-radius:4px;border:1px solid rgba(252,188,60,.3);display:none}
+  #spectator-badge.active{display:block;animation:specPulse 2s ease-in-out infinite}
+  @keyframes specPulse{0%,100%{opacity:.7}50%{opacity:1}}
+  @keyframes wsDotPulse{0%,100%{opacity:.6}50%{opacity:1}}
+  #ws-badge{position:absolute;top:10px;left:10px;z-index:150;font-family:'Press Start 2P',monospace;font-size:9px;background:rgba(0,0,0,.7);padding:6px 12px;border-radius:4px;border:1px solid rgba(228,64,48,.3);display:none}
+  #ws-badge-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e44030;margin-right:8px;vertical-align:middle}
+  #ws-badge-dot.pulse{animation:wsDotPulse 1s ease-in-out infinite}
+  #ws-badge-text{color:var(--gold);vertical-align:middle}
+  #ws-waiting{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:110;text-align:center}
+  #ws-waiting .label{font-family:'Press Start 2P',monospace;font-size:14px;color:var(--dim);animation:specPulse 2s ease-in-out infinite}
+  .ws-url-input{width:100%;background:rgba(255,255,255,.04);border:2px solid rgba(255,255,255,.15);border-radius:8px;padding:12px 14px;font-family:'VT323',monospace;font-size:18px;color:var(--white);outline:none;margin-bottom:16px}
+  .ws-url-input:focus{border-color:var(--gold)}
+  .ws-url-input::placeholder{color:var(--dim)}
   .import-status{margin-top:16px;font-size:18px;min-height:28px;transition:color .2s}
   .import-status.ok{color:var(--green)}
   .import-status.err{color:var(--red)}
@@ -84,6 +97,10 @@
   #top-bar{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:100;display:flex;gap:20px;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:8px 20px;backdrop-filter:blur(6px)}
   #top-bar span{font-size:16px}
   #top-bar .val{font-family:'Silkscreen',monospace;font-size:20px;color:var(--gold)}
+
+  /* ── HOME BUTTON ── */
+  #home-btn{position:absolute;top:10px;right:12px;z-index:150;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 12px;cursor:pointer;font-family:'Press Start 2P',monospace;font-size:10px;color:var(--dim);letter-spacing:1px;backdrop-filter:blur(6px);display:none;transition:background .15s,color .15s,border-color .15s}
+  #home-btn:hover{background:rgba(0,0,0,.85);color:var(--gold);border-color:var(--gold)}
 
   /* ── PROMPT INPUT ── */
   #prompt-bar{position:absolute;top:10px;left:10px;right:10px;z-index:120;display:none;gap:8px;align-items:center}
@@ -153,6 +170,14 @@
       <h3>🕹️ ARCADE</h3>
       <p>Classic Duck Hunt — random tokens fly and you shoot for score</p>
     </div>
+    <div class="mode-card" onclick="showSpectatorImport()">
+      <h3>📺 SPECTATOR</h3>
+      <p>Auto-play for dashboards — AI gunner shoots your token data on loop</p>
+    </div>
+    <div class="mode-card" onclick="showWsConnect()">
+      <h3>🔴 LIVE STREAM</h3>
+      <p>Connect to a WebSocket feed and watch real-time API usage get blasted</p>
+    </div>
   </div>
   <div class="menu-hint">Built for the 52-week build challenge 🚀</div>
 </div>
@@ -176,10 +201,28 @@
   </div>
 </div>
 
+<!-- ═══════ WS CONNECT SCREEN ═══════ -->
+<div class="screen hidden" id="ws-screen">
+  <div class="import-box">
+    <h2>LIVE STREAM</h2>
+    <p style="color:var(--dim);margin-bottom:20px;font-size:16px">Connect to a WebSocket server that emits token usage events</p>
+    <input type="text" id="ws-url-input" class="ws-url-input" placeholder="ws://localhost:8080/stream" value="ws://localhost:8080/stream">
+    <div class="import-actions">
+      <button class="btn btn-dim" onclick="showMenu()">BACK</button>
+      <button class="btn btn-gold" id="btn-ws-connect" onclick="startWsMode()">CONNECT & PLAY</button>
+    </div>
+    <div class="import-status" id="ws-connect-status"></div>
+  </div>
+</div>
+
 <!-- ═══════ GAME AREA ═══════ -->
 <div id="game-wrap">
   <canvas id="cv"></canvas>
   <div id="flash"></div>
+  <div id="spectator-badge">📺 SPECTATOR</div>
+  <div id="ws-badge"><span id="ws-badge-dot"></span><span id="ws-badge-text">LIVE</span></div>
+  <div id="home-btn" onclick="showMenu()">🏠 MENU</div>
+  <div id="ws-waiting"><div class="label">WAITING FOR DATA...</div><div id="ws-waiting-sub" style="font-family:'VT323',monospace;font-size:16px;color:var(--dim);margin-top:10px"></div></div>
 
   <div id="top-bar">
     <span>TOKENS BURNED: <span class="val" id="tv-burned">0</span></span>
@@ -249,16 +292,44 @@ let arcadeTimer = 0, arcadeLaunched = 0, ARCADE_PER_ROUND = 8;
 let mouseX = 0, mouseY = 0;
 let audioCtx = null;
 
+// ── SPECTATOR STATE ──
+let spectatorMode = false;
+let specTarget = null;
+let specCrosshairX = 0, specCrosshairY = 0;
+let specAimStartTime = 0, specAimDuration = 0;
+let specNextShotDelay = 0;
+let specShotReady = false, specShotReadyTime = 0;
+let specAccuracy = 0.85;
+let specRoundPauseUntil = 0, specAutoAdvancePending = false;
+let specOriginalLaunchQueue = [];
+
+// ── WEBSOCKET LIVE STATE ──
+let wsConnection = null, wsUrl = '', wsStatus = 'disconnected';
+let wsReconnectAttempts = 0, wsReconnectTimer = null, wsEventCount = 0;
+const wsMaxReconnectDelay = 30000, wsBaseReconnectDelay = 1000;
+
 // ══════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════
-function showMenu(){ 
-  hideAllScreens(); show('menu-screen'); 
+function showMenu(){
+  hideAllScreens(); show('menu-screen');
   document.getElementById('game-wrap').style.display='none';
   document.getElementById('xhair').style.display='none';
+  document.getElementById('home-btn').style.display='none';
   document.body.style.cursor='default';
+  spectatorMode=false; specAutoAdvancePending=false;
+  document.getElementById('btn-load').textContent='LOAD & PLAY';
+  wsDisconnect();
+  document.getElementById('ws-badge').style.display='none';
+  document.getElementById('ws-waiting').style.display='none';
+  document.querySelector('#hud .hud-col:first-child .hud-lbl').textContent='ROUND';
 }
 function showImport(){ hideAllScreens(); show('import-screen'); }
+function showSpectatorImport(){
+  spectatorMode=true;
+  showImport();
+  document.getElementById('btn-load').textContent='LOAD & SPECTATE';
+}
 function hideAllScreens(){ document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden')); }
 function show(id){ document.getElementById(id).classList.remove('hidden'); }
 
@@ -428,7 +499,7 @@ function updateHUD(){
 }
 function updateAmmo(){
   const r=document.getElementById('ammo-row');r.innerHTML='';
-  for(let i=0;i<SHOTS_PER_ROUND;i++){const s=document.createElement('div');s.className='shell'+(i>=shotsLeft?' spent':'');r.appendChild(s)}
+  for(let i=0;i<SHOTS_PER_ROUND;i++){const s=document.createElement('div');s.className='shell'+((!spectatorMode&&i>=shotsLeft)?' spent':'');r.appendChild(s)}
 }
 function updatePips(){
   const r=document.getElementById('hit-row');r.innerHTML='';
@@ -446,8 +517,15 @@ function beginGame(){
   hideAllScreens();
   document.getElementById('game-wrap').style.display='block';
   document.getElementById('xhair').style.display='block';
+  document.getElementById('home-btn').style.display='block';
   document.body.style.cursor='none';
   round=1;score=0;totalBurned=0;totalCost=0;
+  document.getElementById('spectator-badge').className=spectatorMode?'active':'';
+  if(spectatorMode){
+    specCrosshairX=window.innerWidth/2;specCrosshairY=window.innerHeight/2;
+    specTarget=null;specShotReady=false;specAutoAdvancePending=false;
+    ensureAudio();
+  }
   startRound();
 }
 
@@ -458,7 +536,7 @@ function startRound(){
   arcadeLaunched=0;arcadeTimer=performance.now()+600;
 
   if(mode==='import'){
-    // pull next batch from queue
+    // pull next batch from queue (shared by import + spectator)
     const batch=launchQueue.splice(0,Math.min(8,launchQueue.length));
     roundTotal=batch.length||1;
     batch.forEach((item,i)=>setTimeout(()=>launchDisc(item.profile,item.tokens,item.snippet),i*700));
@@ -468,6 +546,8 @@ function startRound(){
   } else {
     roundTotal=ARCADE_PER_ROUND;
   }
+
+  if(spectatorMode){shotsLeft=999;specTarget=null;specShotReady=false;specAutoAdvancePending=false}
 
   document.getElementById('hv-round').textContent=round;
   document.getElementById('round-overlay').style.display='none';
@@ -489,11 +569,15 @@ function launchDisc(profile,tokens,snippet){
 }
 
 function checkRoundEnd(){
-  if(mode==='live')return; // live mode doesn't end rounds automatically
+  if(mode==='live'||mode==='websocket')return;
   const allDead=discs.every(d=>!d.alive);
   const noAmmo=shotsLeft<=0;
+  // Import/spectator: all discs resolved (hit or escaped)
+  if((mode==='import'||spectatorMode)&&allDead&&hitResults.length>=roundTotal){
+    setTimeout(()=>{if(gameActive)endRound()},400);
+    return;
+  }
   if(allDead&&arcadeLaunched>=roundTotal){
-    // fill remaining as miss
     while(hitResults.length<roundTotal)hitResults.push('miss');
     updatePips();
     setTimeout(()=>{if(gameActive)endRound()},400);
@@ -563,6 +647,79 @@ function arcadeTick(t){
         launchDisc(p2,Math.round(300+Math.random()*8000),'');
         arcadeLaunched++;
       },180);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+// MODE: SPECTATOR AI GUNNER
+// ══════════════════════════════════════════════
+function spectatorTick(t){
+  if(!spectatorMode||!gameActive)return;
+  // keep ammo infinite
+  if(shotsLeft<5)shotsLeft=999;
+
+  // ── Target Acquisition ──
+  if(!specTarget||!specTarget.alive){
+    specTarget=pickSpecTarget();
+    if(specTarget){
+      specAimStartTime=t;
+      specAimDuration=300+Math.random()*500;
+      specNextShotDelay=50+Math.random()*200;
+      specShotReady=false;
+    }
+  }
+  if(!specTarget)return;
+
+  // ── Animate Crosshair ──
+  const elapsed=t-specAimStartTime;
+  const progress=Math.min(1,elapsed/specAimDuration);
+  const eased=1-Math.pow(1-progress,3); // ease-out cubic
+  const lerpFactor=0.06+eased*0.12;
+  specCrosshairX+=(specTarget.x-specCrosshairX)*lerpFactor;
+  specCrosshairY+=(specTarget.y-specCrosshairY)*lerpFactor;
+  updateSpectatorCrosshair();
+
+  // ── Fire ──
+  if(progress>=1&&!specShotReady){specShotReady=true;specShotReadyTime=t}
+  if(specShotReady&&t-specShotReadyTime>=specNextShotDelay){
+    if(Math.random()<specAccuracy){
+      shoot(specTarget.x,specTarget.y);
+    } else {
+      const off=40+Math.random()*30,ang=Math.random()*Math.PI*2;
+      shoot(specTarget.x+Math.cos(ang)*off,specTarget.y+Math.sin(ang)*off);
+    }
+    specTarget=null;specShotReady=false;
+  }
+}
+
+function pickSpecTarget(){
+  let best=null,bestY=-Infinity;
+  for(const d of discs){if(d.alive&&d.y>bestY){bestY=d.y;best=d}}
+  return best;
+}
+
+function updateSpectatorCrosshair(){
+  const xh=document.getElementById('xhair');
+  xh.style.left=specCrosshairX+'px';xh.style.top=specCrosshairY+'px';
+}
+
+function spectatorAutoAdvance(t){
+  if(!spectatorMode||mode==='websocket')return;
+  const ov=document.getElementById('round-overlay');
+  if(ov.style.display==='flex'&&!specAutoAdvancePending){
+    specAutoAdvancePending=true;
+    specRoundPauseUntil=t+2000;
+  }
+  if(specAutoAdvancePending&&t>=specRoundPauseUntil){
+    specAutoAdvancePending=false;
+    if(launchQueue.length>0){
+      nextRound();
+    } else {
+      launchQueue=specOriginalLaunchQueue.map(item=>({...item}));
+      round=0;score=0;totalBurned=0;totalCost=0;
+      nextRound();
+      dogMsg('🔄 Looping session data...');
     }
   }
 }
@@ -771,6 +928,7 @@ function processJsonl(raw){
   }
 
   importStatus(`✓ Loaded ${launchQueue.length} token exchanges from ${assistantMsgs} messages — launching!`,'ok');
+  if(spectatorMode) specOriginalLaunchQueue=launchQueue.map(item=>({...item}));
   mode='import';
   setTimeout(()=>beginGame(),600);
 }
@@ -794,6 +952,135 @@ fileInput.addEventListener('change',()=>{
 });
 
 // ══════════════════════════════════════════════
+// MODE: WEBSOCKET LIVE STREAM
+// ══════════════════════════════════════════════
+function showWsConnect(){
+  hideAllScreens();show('ws-screen');
+  document.getElementById('ws-connect-status').textContent='';
+  const saved=localStorage.getItem('tokenHuntWsUrl');
+  if(saved)document.getElementById('ws-url-input').value=saved;
+}
+
+function startWsMode(){
+  wsUrl=document.getElementById('ws-url-input').value.trim();
+  const st=document.getElementById('ws-connect-status');
+  if(!wsUrl){st.textContent='Enter a WebSocket URL';st.className='import-status err';return}
+  if(!wsUrl.startsWith('ws://')&&!wsUrl.startsWith('wss://')){st.textContent='URL must start with ws:// or wss://';st.className='import-status err';return}
+  localStorage.setItem('tokenHuntWsUrl',wsUrl);
+
+  mode='websocket';spectatorMode=true;wsEventCount=0;wsReconnectAttempts=0;
+
+  hideAllScreens();
+  document.getElementById('game-wrap').style.display='block';
+  document.getElementById('xhair').style.display='block';
+  document.getElementById('home-btn').style.display='block';
+  document.body.style.cursor='none';
+  round=1;score=0;totalBurned=0;totalCost=0;
+  gameActive=true;discs=[];particles=[];
+  roundHits=0;roundTotal=0;combo=0;maxCombo=0;hitResults=[];
+  shotsLeft=999;
+
+  document.getElementById('spectator-badge').className='';
+  document.getElementById('ws-badge').style.display='block';
+  document.getElementById('prompt-bar').style.display='none';
+  document.getElementById('top-bar').style.display='flex';
+  document.getElementById('round-overlay').style.display='none';
+
+  // Swap ROUND label → EVENTS
+  document.querySelector('#hud .hud-col:first-child .hud-lbl').textContent='EVENTS';
+  document.getElementById('hv-round').textContent='0';
+
+  specCrosshairX=window.innerWidth/2;specCrosshairY=window.innerHeight/2;
+  specTarget=null;specShotReady=false;
+  ensureAudio();
+  updateAmmo();updatePips();updateHUD();
+
+  wsShowWaiting('Connecting...');
+  wsConnect();
+}
+
+function wsConnect(){
+  if(wsConnection&&(wsConnection.readyState===WebSocket.CONNECTING||wsConnection.readyState===WebSocket.OPEN))return;
+  wsSetStatus('connecting');
+  try{wsConnection=new WebSocket(wsUrl)}catch(e){wsSetStatus('disconnected');wsScheduleReconnect();return}
+
+  wsConnection.onopen=function(){
+    wsReconnectAttempts=0;wsSetStatus('connected');
+    dogMsg('Connected to live stream!');
+    document.getElementById('ws-waiting').style.display='none';
+    wsShowWaiting('Listening for token events...');
+  };
+  wsConnection.onmessage=function(e){wsHandleMessage(e.data)};
+  wsConnection.onclose=function(){
+    wsSetStatus('disconnected');
+    if(mode==='websocket'){
+      wsScheduleReconnect();
+      if(discs.every(d=>!d.alive))wsShowWaiting('Connection lost. Reconnecting...');
+    }
+  };
+  wsConnection.onerror=function(){};
+}
+
+function wsDisconnect(){
+  if(wsReconnectTimer){clearTimeout(wsReconnectTimer);wsReconnectTimer=null}
+  if(wsConnection){wsConnection.onclose=null;wsConnection.close();wsConnection=null}
+  wsSetStatus('disconnected');
+}
+
+function wsScheduleReconnect(){
+  if(mode!=='websocket')return;
+  wsReconnectAttempts++;
+  const delay=Math.min(wsBaseReconnectDelay*Math.pow(2,wsReconnectAttempts-1),wsMaxReconnectDelay);
+  wsSetStatus('reconnecting');
+  dogMsg(`Reconnecting in ${(delay/1000).toFixed(0)}s...`);
+  wsReconnectTimer=setTimeout(()=>{if(mode==='websocket')wsConnect()},delay);
+}
+
+function wsSetStatus(status){
+  wsStatus=status;
+  const dot=document.getElementById('ws-badge-dot'),txt=document.getElementById('ws-badge-text');
+  if(status==='connected'){dot.style.background='#30c330';dot.className='';txt.textContent='LIVE';txt.style.color='var(--green)'}
+  else if(status==='connecting'){dot.style.background='#fc9838';dot.className='pulse';txt.textContent='CONNECTING...';txt.style.color='var(--orange)'}
+  else if(status==='reconnecting'){dot.style.background='#fc9838';dot.className='pulse';txt.textContent='RECONNECTING...';txt.style.color='var(--orange)'}
+  else{dot.style.background='#e44030';dot.className='';txt.textContent='DISCONNECTED';txt.style.color='var(--red)'}
+}
+
+function wsHandleMessage(raw){
+  let data;
+  try{data=JSON.parse(raw)}catch(e){return}
+  document.getElementById('ws-waiting').style.display='none';
+
+  const modelStr=data.model||data.model_id||'';
+  const inputTokens=data.input_tokens||data.prompt_tokens||0;
+  const outputTokens=data.output_tokens||data.completion_tokens||0;
+  const cacheRead=data.cache_read_input_tokens||0;
+  const cacheCreate=data.cache_creation_input_tokens||0;
+  const snippet=data.prompt||data.message||'';
+  const user=data.user||'';
+
+  const totalTokens=inputTokens+outputTokens+cacheRead+cacheCreate;
+  if(totalTokens===0)return;
+
+  wsEventCount++;
+  document.getElementById('hv-round').textContent=wsEventCount;
+
+  const profile=detectModel(modelStr);
+  const label=(user?`[${user}] `:'')+((typeof snippet==='string'?snippet:'')).slice(0,40);
+
+  const directTokens=inputTokens+outputTokens;
+  if(directTokens>0){roundTotal++;launchDisc(profile,directTokens,label)}
+  if(cacheRead>2000){roundTotal++;launchDisc(MODEL_PROFILES.cache,cacheRead,user?`[${user}] cache read`:'cache read')}
+  if(cacheCreate>2000){roundTotal++;launchDisc(MODEL_PROFILES.cache,cacheCreate,user?`[${user}] cache write`:'cache write')}
+  updatePips();
+}
+
+function wsShowWaiting(subtext){
+  const el=document.getElementById('ws-waiting');
+  el.style.display='block';
+  document.getElementById('ws-waiting-sub').textContent=subtext||'';
+}
+
+// ══════════════════════════════════════════════
 // MAIN LOOP
 // ══════════════════════════════════════════════
 function loop(t){
@@ -802,6 +1089,7 @@ function loop(t){
 
   if(gameActive){
     arcadeTick(t);
+    spectatorTick(t);
     // Update discs
     for(const d of discs){
       if(d.alive)d.update();
@@ -810,6 +1098,16 @@ function loop(t){
         if(mode!=='live'){hitResults.push('miss');updatePips();checkRoundEnd()}
       }
     }
+  }
+
+  // Spectator auto-advance (runs even when gameActive is false)
+  if(spectatorMode)spectatorAutoAdvance(t);
+
+  // WebSocket: show waiting when idle
+  if(mode==='websocket'&&gameActive){
+    const anyAlive=discs.some(d=>d.alive);
+    if(!anyAlive&&wsStatus==='connected')wsShowWaiting('Listening for token events...');
+    else if(anyAlive)document.getElementById('ws-waiting').style.display='none';
   }
 
   // Draw discs
@@ -827,12 +1125,13 @@ function loop(t){
 // ══════════════════════════════════════════════
 document.addEventListener('mousemove',e=>{
   mouseX=e.clientX;mouseY=e.clientY;
+  if(spectatorMode)return; // AI controls crosshair
   const xh=document.getElementById('xhair');
   xh.style.left=e.clientX+'px';xh.style.top=e.clientY+'px';
 });
 document.addEventListener('click',e=>{
-  // Don't shoot if clicking UI elements
-  if(e.target.closest('#prompt-bar')||e.target.closest('.btn')||e.target.closest('.mode-card')||e.target.closest('.screen:not(.hidden)')||e.target.closest('#round-overlay'))return;
+  if(spectatorMode)return; // AI controls shooting
+  if(e.target.closest('#prompt-bar')||e.target.closest('.btn')||e.target.closest('.mode-card')||e.target.closest('.screen:not(.hidden)')||e.target.closest('#round-overlay')||e.target.closest('#home-btn'))return;
   if(gameActive)shoot(e.clientX,e.clientY);
 });
 document.addEventListener('contextmenu',e=>e.preventDefault());
@@ -842,6 +1141,14 @@ document.addEventListener('contextmenu',e=>e.preventDefault());
 // ══════════════════════════════════════════════
 initCanvas();
 requestAnimationFrame(loop);
+
+// Query param: ?spectator=1
+(function(){
+  const p=new URLSearchParams(window.location.search);
+  if(p.get('spectator')==='1'){showSpectatorImport()}
+  const wsParam=p.get('ws');
+  if(wsParam){document.getElementById('ws-url-input').value=wsParam;setTimeout(()=>startWsMode(),100)}
+})();
 </script>
 </body>
 </html>
