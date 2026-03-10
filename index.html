@@ -102,12 +102,6 @@
   #home-btn{position:absolute;top:10px;right:12px;z-index:150;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 12px;cursor:pointer;font-family:'Press Start 2P',monospace;font-size:10px;color:var(--dim);letter-spacing:1px;backdrop-filter:blur(6px);display:none;transition:background .15s,color .15s,border-color .15s}
   #home-btn:hover{background:rgba(0,0,0,.85);color:var(--gold);border-color:var(--gold)}
 
-  /* ── PROMPT INPUT ── */
-  #prompt-bar{position:absolute;top:10px;left:10px;right:10px;z-index:120;display:none;gap:8px;align-items:center}
-  #prompt-bar input{flex:1;background:rgba(0,0,0,.7);border:2px solid var(--gold);border-radius:6px;padding:10px 14px;font-family:'VT323',monospace;font-size:18px;color:var(--white);outline:none;backdrop-filter:blur(6px)}
-  #prompt-bar input::placeholder{color:var(--dim)}
-  #prompt-bar button{font-family:'Press Start 2P',monospace;font-size:10px;padding:10px 16px;background:var(--gold);color:var(--black);border:2px solid var(--gold-dark);border-radius:6px;cursor:pointer}
-
   /* ── COMBO ── */
   #combo-display{position:absolute;top:60px;right:20px;z-index:100;font-family:'Press Start 2P',monospace;font-size:14px;color:var(--orange);opacity:0;transition:all .25s;text-shadow:2px 2px 0 rgba(0,0,0,.6)}
 
@@ -161,10 +155,6 @@
     <div class="mode-card" onclick="showImport()">
       <h3>📂 IMPORT JSONL</h3>
       <p>Drop a Claude Code session file and shoot your real token usage</p>
-    </div>
-    <div class="mode-card" onclick="startLiveMode()">
-      <h3>⌨️ LIVE PROMPT</h3>
-      <p>Type prompts, watch estimated tokens fly as discs, and blast them</p>
     </div>
     <div class="mode-card" onclick="startArcadeMode()">
       <h3>🕹️ ARCADE</h3>
@@ -229,11 +219,6 @@
     <span>EST COST: <span class="val" id="tv-cost">$0.000</span></span>
   </div>
 
-  <div id="prompt-bar">
-    <input type="text" id="prompt-input" placeholder="Type a prompt and press Enter to launch tokens...">
-    <button onclick="fireLivePrompt()">SEND</button>
-  </div>
-
   <div id="combo-display">COMBO x1</div>
   <div id="msg-area"></div>
 
@@ -281,7 +266,7 @@ const MODEL_PROFILES = {
 // STATE
 // ══════════════════════════════════════════════
 let cv, cx, W, H;
-let mode = null; // 'arcade','live','import'
+let mode = null; // 'arcade','import'
 let gameActive = false;
 let round = 1, score = 0, totalBurned = 0, totalCost = 0;
 let shotsLeft = SHOTS_PER_ROUND, combo = 0, maxCombo = 0;
@@ -541,8 +526,6 @@ function startRound(){
     roundTotal=batch.length||1;
     batch.forEach((item,i)=>setTimeout(()=>launchDisc(item.profile,item.tokens,item.snippet),i*700));
     if(batch.length===0){roundTotal=1;setTimeout(()=>launchDisc(MODEL_PROFILES.sonnet,500,'(no more data)'),500)}
-  } else if(mode==='live'){
-    roundTotal=0; // dynamic — grows as user types
   } else {
     roundTotal=ARCADE_PER_ROUND;
   }
@@ -553,14 +536,7 @@ function startRound(){
   document.getElementById('round-overlay').style.display='none';
   updateAmmo();updatePips();updateHUD();hideCombo();
 
-  if(mode==='live'){
-    document.getElementById('prompt-bar').style.display='flex';
-    document.getElementById('top-bar').style.display='none';
-    document.getElementById('prompt-input').focus();
-  } else {
-    document.getElementById('prompt-bar').style.display='none';
-    document.getElementById('top-bar').style.display='flex';
-  }
+  document.getElementById('top-bar').style.display='flex';
 }
 
 function launchDisc(profile,tokens,snippet){
@@ -569,7 +545,7 @@ function launchDisc(profile,tokens,snippet){
 }
 
 function checkRoundEnd(){
-  if(mode==='live'||mode==='websocket')return;
+  if(mode==='websocket')return;
   const allDead=discs.every(d=>!d.alive);
   const noAmmo=shotsLeft<=0;
   // Import/spectator: all discs resolved (hit or escaped)
@@ -723,59 +699,6 @@ function spectatorAutoAdvance(t){
     }
   }
 }
-
-// ══════════════════════════════════════════════
-// MODE: LIVE PROMPT
-// ══════════════════════════════════════════════
-function startLiveMode(){
-  mode='live';beginGame();
-}
-
-function fireLivePrompt(){
-  const inp=document.getElementById('prompt-input');
-  const text=inp.value.trim();
-  if(!text)return;
-  inp.value='';
-
-  // Estimate tokens: ~1 token per 4 chars for input, model "thinks" ~2-5x for output
-  const inputTokens=Math.max(10,Math.ceil(text.length/3.8));
-  const outputTokens=Math.round(inputTokens*(2+Math.random()*4));
-  const totalTokens=inputTokens+outputTokens;
-
-  // Pick model based on prompt complexity
-  let prof;
-  if(text.length>200||/refactor|architect|design|complex|analyze|review entire/i.test(text)){
-    prof=MODEL_PROFILES.opus;
-  } else if(text.length>80||/explain|write|build|create|implement|debug/i.test(text)){
-    prof=MODEL_PROFILES.sonnet;
-  } else if(text.length<30){
-    prof=MODEL_PROFILES.haiku;
-  } else {
-    prof=MODEL_PROFILES.sonnet;
-  }
-
-  roundTotal++;
-  updatePips();
-
-  // Launch 1-3 discs depending on token volume
-  const numDiscs=totalTokens>5000?3:totalTokens>1500?2:1;
-  const perDisc=Math.round(totalTokens/numDiscs);
-  for(let i=0;i<numDiscs;i++){
-    setTimeout(()=>{
-      launchDisc(prof,perDisc,i===0?text:'');
-    },i*250);
-  }
-
-  // Extra ammo for live mode
-  shotsLeft=Math.min(shotsLeft+numDiscs+1,SHOTS_PER_ROUND);
-  updateAmmo();
-
-  dogMsg(`~${totalTokens.toLocaleString()} tokens estimated`);
-}
-
-document.getElementById('prompt-input').addEventListener('keydown',e=>{
-  if(e.key==='Enter'){e.preventDefault();fireLivePrompt()}
-});
 
 // ══════════════════════════════════════════════
 // MODE: IMPORT
