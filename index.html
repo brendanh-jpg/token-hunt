@@ -191,8 +191,8 @@
       <p style="font-size:13px;margin-top:6px;color:var(--dim)">~/.claude/projects/&lt;project&gt;/&lt;session&gt;.jsonl</p>
       <input type="file" id="file-input" accept=".jsonl,.json,.txt">
     </div>
-    <div class="or-divider">— or paste ccusage / raw JSONL output —</div>
-    <textarea class="paste-area" id="paste-area" placeholder='Paste JSONL lines or ccusage JSON output here...'></textarea>
+    <div class="or-divider">— or paste ccusage / credit JSON / raw JSONL output —</div>
+    <textarea class="paste-area" id="paste-area" placeholder='Paste JSONL lines, ccusage JSON, or daily credit JSON here...'></textarea>
     <div class="import-actions">
       <button class="btn btn-dim" onclick="showMenu()">BACK</button>
       <button class="btn btn-gold" id="btn-load" onclick="parseImport()">LOAD & PLAY</button>
@@ -896,12 +896,21 @@ function processJsonl(raw){
   if(launchQueue.length===0){
     try{
       const data=JSON.parse(raw);
-      const arr=Array.isArray(data)?data:(data?.sessions||data?.data||[]);
+      const arr=Array.isArray(data)?data:(data?.sessions||data?.data||data?.daily_costs||data?.credits||data?.usage||data?.results||data?.items||[]);
       if(Array.isArray(arr)&&arr.length>0){
         arr.forEach(row=>{
-          const tokens=row.totalTokens||row.total_tokens||row.tokens||row.input_tokens||1000;
-          const prof=detectModel(row.model);
-          launchQueue.push({profile:prof, tokens, snippet:row.session||row.title||row.date||''});
+          // Handle nested models array (daily credit JSON format: {date, models: [{model, input_tokens, ...}]})
+          if(Array.isArray(row.models)){
+            row.models.forEach(m=>{
+              const tokens=(m.input_tokens||0)+(m.output_tokens||0)+(m.cache_read_input_tokens||0)+(m.cache_creation_input_tokens||0)||m.totalTokens||m.total_tokens||m.tokens||1000;
+              const prof=detectModel(m.model||row.model);
+              launchQueue.push({profile:prof, tokens, snippet:row.date||row.session||row.title||''});
+            });
+            return;
+          }
+          const tokens=row.totalTokens||row.total_tokens||row.tokens||(row.input_tokens||0)+(row.output_tokens||0)||(row.usage?.input_tokens||0)+(row.usage?.output_tokens||0)||1000;
+          const prof=detectModel(row.model||row.usage?.model);
+          launchQueue.push({profile:prof, tokens:tokens||1000, snippet:row.session||row.title||row.date||''});
         });
       }
     }catch(e){}
@@ -914,14 +923,14 @@ function processJsonl(raw){
       if(obj.usage||obj.input_tokens||obj.tokens){
         const u=obj.usage||obj;
         const tokens=(u.input_tokens||0)+(u.output_tokens||0)+(u.cache_read_input_tokens||0)+(u.cache_creation_input_tokens||0)||u.tokens||1000;
-        launchQueue.push({profile:detectModel(obj.model), tokens, snippet:obj.title||''});
+        launchQueue.push({profile:detectModel(obj.model||u.model), tokens, snippet:obj.title||obj.date||''});
       }
     }catch(e){}
   }
 
   if(launchQueue.length===0){
     const detail=parsedLines===0
-      ?'No valid JSON lines found. Make sure you paste raw JSONL content.'
+      ?'No valid JSON found. Supported formats: Claude Code session .jsonl, ccusage JSON, or daily credit JSON with token fields.'
       :`Parsed ${parsedLines} JSON lines (${userMsgs} user, ${assistantMsgs} assistant) but found 0 token entries.`;
     importStatus('⚠ '+detail,'err');
     return;
